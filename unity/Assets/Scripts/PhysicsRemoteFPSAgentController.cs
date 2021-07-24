@@ -650,7 +650,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
             Vector3 position,
             Vector3 rotation,
             bool forceAction = false,
-            bool forceKinematic = false,
+            bool placeStationary = false,
             bool allowTeleportOutOfHand = false,
             bool makeUnbreakable = false
         ) {
@@ -666,14 +666,14 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                 position: position,
                 rotation: rotation,
                 forceAction: forceAction,
-                forceKinematic: forceKinematic,
+                placeStationary: placeStationary,
                 allowTeleportOutOfHand: allowTeleportOutOfHand,
                 makeUnbreakable: makeUnbreakable,
                 includeErrorMessage: true
             );
 
             if (teleportSuccess) {
-                if (!forceKinematic) {
+                if (!placeStationary) {
                     StartCoroutine(checkIfObjectHasStoppedMoving(sop, 0, true));
                     return;
                 } else {
@@ -691,7 +691,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
             Vector3[] positions,
             Vector3 rotation,
             bool forceAction = false,
-            bool forceKinematic = false,
+            bool placeStationary = false,
             bool allowTeleportOutOfHand = false,
             bool makeUnbreakable = false
         ) {
@@ -709,7 +709,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                     position: position,
                     rotation: rotation,
                     forceAction: forceAction,
-                    forceKinematic: forceKinematic,
+                    placeStationary: placeStationary,
                     allowTeleportOutOfHand: allowTeleportOutOfHand,
                     makeUnbreakable: makeUnbreakable,
                     includeErrorMessage: true
@@ -739,7 +739,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
             Vector3 position,
             Vector3 rotation,
             bool forceAction,
-            bool forceKinematic,
+            bool placeStationary,
             bool allowTeleportOutOfHand,
             bool makeUnbreakable,
             bool includeErrorMessage = false
@@ -754,10 +754,22 @@ namespace UnityStandardAssets.Characters.FirstPerson {
             Vector3 oldPosition = sop.transform.position;
             Quaternion oldRotation = sop.transform.rotation;
 
+            GameObject topObject = GameObject.Find("Objects");
+            sop.transform.SetParent(topObject.transform);
+
             sop.transform.position = position;
             sop.transform.rotation = Quaternion.Euler(rotation);
-            if (forceKinematic) {
-                sop.GetComponent<Rigidbody>().isKinematic = true;
+            if (placeStationary) {
+                PhysicsSceneManager psm = this.GetComponent<PhysicsSceneManager>();
+                foreach (Rigidbody rbis in psm.rbsInScene) {
+                    rbis.collisionDetectionMode = CollisionDetectionMode.Discrete;
+                    rbis.velocity = Vector3.zero;
+                    rbis.angularVelocity = Vector3.zero;
+                    rbis.Sleep();
+                }
+                Rigidbody rb = sop.GetComponent<Rigidbody>();
+                rb.velocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
             }
             if (!forceAction) {
                 Collider colliderHitIfTeleported = UtilityFunctions.firstColliderObjectCollidingWith(sop.gameObject);
@@ -779,13 +791,13 @@ namespace UnityStandardAssets.Characters.FirstPerson {
             }
 
             if (sopInHand) {
-                if (!forceKinematic) {
+                if (!placeStationary) {
                     Rigidbody rb = ItemInHand.GetComponent<Rigidbody>();
                     rb.constraints = RigidbodyConstraints.None;
                     rb.useGravity = true;
                     rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
                 }
-                GameObject topObject = GameObject.Find("Objects");
+
                 if (topObject != null) {
                     ItemInHand.transform.parent = topObject.transform;
                 } else {
@@ -795,7 +807,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                 DropContainedObjects(
                     target: sop,
                     reparentContainedObjects: true,
-                    forceKinematic: forceKinematic
+                    placeStationary: placeStationary
                 );
                 sop.isInAgentHand = false;
                 ItemInHand = null;
@@ -811,7 +823,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
             float z,
             Vector3 rotation,
             bool forceAction = false,
-            bool forceKinematic = false,
+            bool placeStationary = false,
             bool allowTeleportOutOfHand = false,
             bool makeUnbreakable = false
         ) {
@@ -820,7 +832,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                 position: new Vector3(x, y, z),
                 rotation: rotation,
                 forceAction: forceAction,
-                forceKinematic: forceKinematic,
+                placeStationary: placeStationary,
                 allowTeleportOutOfHand: allowTeleportOutOfHand,
                 makeUnbreakable: makeUnbreakable
             );
@@ -3045,7 +3057,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                 DropContainedObjects(
                     target: ItemInHand.GetComponent<SimObjPhysics>(),
                     reparentContainedObjects: true,
-                    forceKinematic: false
+                    placeStationary: false
                 );
             }
 
@@ -3505,7 +3517,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
             string objectId,
             Vector3 position,
             Vector3? rotation = null,
-            bool forceKinematic = false
+            bool placeStationary = false
         ) {
             if (!physicsSceneManager.ObjectIdToSimObjPhysics.ContainsKey(objectId)) {
                 errorMessage = "Cannot find object with id " + objectId;
@@ -3520,12 +3532,12 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                 target: target,
                 position: position,
                 rotation: rotation,
-                forceKinematic: forceKinematic,
+                placeStationary: placeStationary,
                 includeErrorMessage: true
             );
 
             if (placeObjectSuccess) {
-                if (!forceKinematic) {
+                if (!placeStationary) {
                     StartCoroutine(checkIfObjectHasStoppedMoving(target, 0, true));
                     return;
                 } else {
@@ -3542,7 +3554,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
             SimObjPhysics target,
             Vector3 position,
             Vector3? rotation,
-            bool forceKinematic,
+            bool placeStationary,
             bool includeErrorMessage = false
         ) {
             // make sure point we are moving the object to is valid
@@ -3587,42 +3599,75 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                 target.gameObject
             );
 
+            //nothing hit, place at point now
             if (colliderHitIfSpawned == null) {
-                target.transform.position = finalPos;
+                print(target.name);
+                Rigidbody trb = target.GetComponent<Rigidbody>();
 
-                // Additional stuff we need to do if placing item that was in hand
-                if (wasInHand) {
 
-                    Rigidbody rb = ItemInHand.GetComponent<Rigidbody>();
-                    rb.isKinematic = forceKinematic;
-                    rb.constraints = RigidbodyConstraints.None;
-                    rb.useGravity = true;
+                if (placeStationary == true) {
+                    //freeze all rigid bodies and then place the object
+                    foreach (Rigidbody rbis in physicsSceneManager.rbsInScene) {
+                        rbis.collisionDetectionMode = CollisionDetectionMode.Discrete;
+                        rbis.velocity = Vector3.zero;
+                        rbis.angularVelocity = Vector3.zero;
+                        rbis.Sleep();
+                    }
+                    target.transform.position = finalPos;
+                    trb.isKinematic = false;
+                    trb.constraints = RigidbodyConstraints.None;
+                    trb.useGravity = true;
+
+                    trb.collisionDetectionMode = CollisionDetectionMode.Discrete;
+                    trb.velocity = Vector3.zero;
+                    trb.angularVelocity = Vector3.zero;
+                    trb.Sleep();
+                }
+
+                //place with physics resolution instead
+                else {
+                    target.transform.position = finalPos;
+                    trb.isKinematic = false;
+                    trb.constraints = RigidbodyConstraints.None;
+                    trb.useGravity = true;
 
                     // change collision detection mode while falling so that obejcts don't phase through colliders.
                     // this is reset to discrete on SimObjPhysics.cs's update 
-                    rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+                    trb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+                }
 
-                    GameObject topObject = GameObject.Find("Objects");
-                    if (topObject != null) {
-                        ItemInHand.transform.parent = topObject.transform;
-                    } else {
-                        ItemInHand.transform.parent = null;
-                    }
+                //if it was a receptacle, drop any contained objects either stationary or not
+                DropContainedObjects(
+                      target: target,
+                      reparentContainedObjects: true,
+                      placeStationary: placeStationary
+                  );
 
-                    DropContainedObjects(
-                        target: target,
-                        reparentContainedObjects: true,
-                        forceKinematic: forceKinematic
-                    );
+                GameObject topObject = GameObject.Find("Objects");
+                if (topObject != null) {
+                    target.transform.parent = topObject.transform;
+                } else {
+                    target.transform.parent = null;
+                }
+
+                // Additional stuff we need to do if placing item that was in hand
+                if (wasInHand) {
                     target.isInAgentHand = false;
                     ItemInHand = null;
-
                 }
+
                 return true;
             }
 
+            //we hit something, reset to original values since placement failed
             target.transform.position = originalPos;
             target.transform.rotation = originalRotation;
+            foreach (Rigidbody rbis in physicsSceneManager.rbsInScene) {
+                rbis.collisionDetectionMode = CollisionDetectionMode.Discrete;
+                rbis.velocity = Vector3.zero;
+                rbis.angularVelocity = Vector3.zero;
+                rbis.Sleep();
+            }
 
             // if the original position was in agent hand, reparent object to agent hand
             if (wasInHand) {
@@ -3630,6 +3675,13 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                 ItemInHand = target.gameObject;
                 target.isInAgentHand = true;
                 target.GetComponent<Rigidbody>().isKinematic = true;
+
+                foreach (Rigidbody rbis in physicsSceneManager.rbsInScene) {
+                    rbis.collisionDetectionMode = CollisionDetectionMode.Discrete;
+                    rbis.velocity = Vector3.zero;
+                    rbis.angularVelocity = Vector3.zero;
+                    rbis.Sleep();
+                }
             }
 
             if (includeErrorMessage) {
@@ -3646,7 +3698,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
             string objectId,
             Vector3[] positions,
             Vector3? rotation = null,
-            bool forceKinematic = false
+            bool placeStationary = false
         ) {
             if (!physicsSceneManager.ObjectIdToSimObjPhysics.ContainsKey(objectId)) {
                 errorMessage = "Cannot find object with id " + objectId;
@@ -3664,7 +3716,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                     target: target,
                     position: position,
                     rotation: rotation,
-                    forceKinematic: forceKinematic,
+                    placeStationary: placeStationary,
                     includeErrorMessage: true
                 );
                 if (placeObjectSuccess) {
@@ -3674,7 +3726,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
             }
 
             if (placeObjectSuccess) {
-                if (!forceKinematic) {
+                if (!placeStationary) {
                     StartCoroutine(checkIfObjectHasStoppedMoving(target, 0, true));
                     return;
                 } else {
@@ -4356,14 +4408,14 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                 return;
             }
 
-            placeHeldObject(
+            StartCoroutine(placeHeldObject(
                 targetReceptacle: targetReceptacle,
                 forceAction: forceAction,
                 placeStationary: placeStationary,
                 randomSeed: randomSeed,
                 maxDistance: maxDistance,
                 putNearXY: putNearXY,
-                hit: hit);
+                hit: hit));
         }
 
 
@@ -4399,17 +4451,17 @@ namespace UnityStandardAssets.Characters.FirstPerson {
 
             RaycastHit hit = new RaycastHit();
 
-            placeHeldObject(
+            StartCoroutine(placeHeldObject(
                 targetReceptacle: targetReceptacle,
                 forceAction: forceAction,
                 placeStationary: placeStationary,
                 randomSeed: randomSeed,
                 maxDistance: maxDistance,
                 putNearXY: false,
-                hit: hit);
+                hit: hit));
         }
 
-        private void placeHeldObject(
+        IEnumerator placeHeldObject(
             SimObjPhysics targetReceptacle,
             bool forceAction,
             bool placeStationary,
@@ -4425,7 +4477,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
             if (ItemInHand == null) {
                 errorMessage = "Can't place an object if Agent isn't holding anything";
                 actionFinished(false);
-                return;
+                yield break;
             }
 
 
@@ -4433,14 +4485,14 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                 errorMessage = "No valid Receptacle found";
                 Debug.Log(errorMessage);
                 actionFinished(false);
-                return;
+                yield break;
             }
 
             if (!targetReceptacle.DoesThisObjectHaveThisSecondaryProperty(SimObjSecondaryProperty.Receptacle)) {
                 errorMessage = "This target object is NOT a receptacle!";
                 Debug.Log(errorMessage);
                 actionFinished(false);
-                return;
+                yield break;
             }
 
             // if receptacle can open, check that it's open before placing. Can't place objects in something that is closed!
@@ -4450,7 +4502,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                         errorMessage = "Target openable Receptacle is CLOSED, can't place if target is not open!";
                         Debug.Log(errorMessage);
                         actionFinished(false);
-                        return;
+                        yield break;
                     }
                 }
             }
@@ -4468,7 +4520,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                                 osr.attachPoint.transform.rotation, false) == false) {
                             errorMessage = "another object's collision is blocking held object from being placed";
                             actionFinished(false);
-                            return;
+                            yield break;
                         }
 
                     }
@@ -4481,7 +4533,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                     ItemInHand = null;
                     DefaultAgentHand();
                     actionFinished(true);
-                    return;
+                    yield break;
                 } else {
 
                     if (osr.attachPoint.transform.childCount > 0 || osr.isFull()) {
@@ -4491,7 +4543,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                     }
 
                     actionFinished(false);
-                    return;
+                    yield break;
                 }
             }
 
@@ -4506,7 +4558,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                             errorMessage = ItemInHand.name + " cannot be placed in " + targetReceptacle.transform.name;
                             Debug.Log(errorMessage);
                             actionFinished(false);
-                            return;
+                            yield break;
                         }
                     }
                 }
@@ -4520,11 +4572,11 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                 onlyPointsCloseToAgent = false;
             }
 
-            bool placeUpright = false;
+            //bool placeUpright = false;
             // check if the object should be forced to only check upright placement angles (this prevents things like Pots being placed sideways)
-            if (ReceptacleRestrictions.AlwaysPlaceUpright.Contains(handSOP.ObjType)) {
-                placeUpright = true;
-            }
+            // if (ReceptacleRestrictions.AlwaysPlaceUpright.Contains(handSOP.ObjType)) {
+            //     placeUpright = true;
+            // }
 
             // ok we are holding something, time to try and place it
             InstantiatePrefabTest script = physicsSceneManager.GetComponent<InstantiatePrefabTest>();
@@ -4559,21 +4611,60 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                     spawnPoints.Add(pair.Key);
                 }
             }
+            SpawnResult spawnResult = new SpawnResult();
 
-            if (script.PlaceObjectReceptacle(spawnPoints, ItemInHand.GetComponent<SimObjPhysics>(), placeStationary, -1, 90, placeUpright)) {
+            //puase physics so things don't wiggle as we try and place object
+            Physics.autoSimulation = false;
+
+            //wait for oabject to try and be placed
+            yield return StartCoroutine(script.tryToPlaceInReceptacle(
+                rsps: spawnPoints,
+                sopToPlace: ItemInHand.GetComponent<SimObjPhysics>(),
+                placeStationary: placeStationary,
+                maxPlacementAttempts: -1,
+                degreeIncrement: 90,
+                spawnResult: spawnResult
+            ));
+
+            //object was placed!
+            if(spawnResult.result == true) {
+                print("result was true");
                 ItemInHand = null;
                 DefaultAgentHand();
-                actionFinished(true);
-            } else {
-                errorMessage = "No valid positions to place object found";
-                actionFinished(false);
+
+            if(placeStationary) {
+                //sleep all rigidbodies in scene so everything is actually placed stationary
+                yield return StartCoroutine(UtilityFunctions.SleepAllRigidbodies());
             }
 
-            // #if UNITY_EDITOR
-            // watch.Stop();
-            // var elapsed = watch.ElapsedMilliseconds;
-            // print("place object took: " + elapsed + "ms");
-            // #endif
+            Physics.autoSimulation = true;
+
+            if(!placeStationary) {
+                //wake for physics resolution of final placement
+                yield return StartCoroutine(UtilityFunctions.WakeAllRigidbodies());
+            }
+
+                actionFinished(true);
+                yield break;
+
+            } else {
+                errorMessage = "No valid positions to place object found";
+
+                Physics.autoSimulation = true;
+
+                actionFinished(false);
+                yield break;
+            }
+
+            // //set negative maxNumPlacement so it tries all points in this receptacle
+            // if (script.PlaceObjectReceptacle(spawnPoints, ItemInHand.GetComponent<SimObjPhysics>(), placeStationary, -1, 90, placeUpright)) {
+            //     ItemInHand = null;
+            //     DefaultAgentHand();
+            //     actionFinished(true);
+            // } else {
+            //     errorMessage = "No valid positions to place object found";
+            //     actionFinished(false);
+            // }
         }
 
 
@@ -4648,7 +4739,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                 DropContainedObjects(
                     target: target,
                     reparentContainedObjects: true,
-                    forceKinematic: false
+                    placeStationary: false
                 );
                 throw new InvalidOperationException("Picking up object would cause it to collide and clip into something!");
             }
@@ -4702,12 +4793,15 @@ namespace UnityStandardAssets.Characters.FirstPerson {
             }
         }
 
+        //drop contained objects after some receptacle has been picked up via agent `PickupObject`
         public void DropContainedObjects(
             SimObjPhysics target,
             bool reparentContainedObjects,
-            bool forceKinematic
+            bool placeStationary
         ) {
             if (target.DoesThisObjectHaveThisSecondaryProperty(SimObjSecondaryProperty.Receptacle)) {
+                PhysicsSceneManager psm = this.GetComponent<PhysicsSceneManager>();
+
                 GameObject topObject = null;
 
                 foreach (SimObjPhysics sop in target.ContainedObjectReferences) {
@@ -4723,56 +4817,20 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                         sop.transform.SetParent(topObject.transform);
                     }
 
-                    Rigidbody rb = sop.GetComponent<Rigidbody>();
-                    rb.isKinematic = forceKinematic;
-                    if (!forceKinematic) {
-                        rb.useGravity = true;
-                        rb.constraints = RigidbodyConstraints.None;
-                        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
-                    }
+                    if (placeStationary) {
+                        UtilityFunctions.SleepAllRigidbodiesInScene();
 
+                        Physics.autoSimulation = false;
+                        Rigidbody rb = sop.GetComponent<Rigidbody>();
+                        rb.velocity = Vector3.zero;
+                        rb.angularVelocity = Vector3.zero;
+                        rb.Sleep();
+                        Physics.autoSimulation = true;
+                    }
                 }
                 target.ClearContainedObjectReferences();
             }
         }
-
-        public void DropContainedObjectsStationary(SimObjPhysics target) {
-            DropContainedObjects(target: target, reparentContainedObjects: false, forceKinematic: true);
-            return;
-        }
-
-        // private IEnumerator checkDropHeldObjectAction(SimObjPhysics currentHandSimObj) 
-        // {
-        //     yield return null; // wait for two frames to pass
-        //     yield return null;
-        //     float startTime = Time.time;
-
-        //     // if we can't find the currentHandSimObj's rigidbody because the object was destroyed, bypass this check
-        //     if (currentHandSimObj != null)
-        //     {
-        //         Rigidbody rb = currentHandSimObj.GetComponentInChildren<Rigidbody>();
-        //         while (Time.time - startTime < 2) 
-        //         {
-        //             if(currentHandSimObj == null)
-        //             break;
-
-        //             if (Math.Abs(rb.angularVelocity.sqrMagnitude + rb.velocity.sqrMagnitude) < 0.00001) 
-        //             {
-        //                 // Debug.Log ("object is now at rest");
-        //                 break;
-        //             } 
-
-        //             else 
-        //             {
-        //                 // Debug.Log ("object is still moving");
-        //                 yield return null;
-        //             }
-        //         }
-        //     }
-
-        //     DefaultAgentHand();
-        //     actionFinished(true);
-        // }
 
         private IEnumerator checkDropHeldObjectActionFast(SimObjPhysics currentHandSimObj) {
             if (currentHandSimObj != null) {
@@ -4830,7 +4888,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
             DropContainedObjects(
                 target: ItemInHand.GetComponent<SimObjPhysics>(),
                 reparentContainedObjects: true,
-                forceKinematic: false
+                placeStationary: false
             );
 
             // if physics simulation has been paused by the PausePhysicsAutoSim() action,
@@ -8487,7 +8545,7 @@ namespace UnityStandardAssets.Characters.FirstPerson {
                             DropContainedObjects(
                                 target: targetsop,
                                 reparentContainedObjects: true,
-                                forceKinematic: false
+                                placeStationary: false
                             );
                         }
 

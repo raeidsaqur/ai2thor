@@ -242,4 +242,53 @@ public static class UtilityFunctions {
 
         return corners;
     }
+
+    public static void SleepAllRigidbodiesInScene() {
+        Physics.autoSimulation = false;
+        PhysicsSceneManager psm = GameObject.Find("PhysicsSceneManager").GetComponent<PhysicsSceneManager>();
+        foreach (Rigidbody rbis in psm.rbsInScene) {
+            rbis.collisionDetectionMode = CollisionDetectionMode.Discrete;
+            rbis.velocity = Vector3.zero;
+            rbis.angularVelocity = Vector3.zero;
+            rbis.Sleep();
+        }
+        Physics.autoSimulation = true;
+    }
+
+    public static IEnumerator SleepAllRigidbodies()
+    {
+        //Debug.Log("starting rigidbody sleep");
+        PhysicsSceneManager psm = GameObject.Find("PhysicsSceneManager").GetComponent<PhysicsSceneManager>();
+        
+        //yield return new WaitForFixedUpdate();
+        //Physics.autoSimulation=false;
+
+        foreach (Rigidbody rbis in psm.rbsInScene) {
+            rbis.collisionDetectionMode = CollisionDetectionMode.Discrete;
+            rbis.velocity = Vector3.zero;
+            rbis.angularVelocity = Vector3.zero;
+            yield return new WaitForFixedUpdate();
+            rbis.Sleep();
+        }
+
+        //yield return new WaitForFixedUpdate();
+        //Physics.autoSimulation = true;
+        //Debug.Log("we are done sleeping all rbs");
+    }
+
+    public static IEnumerator WakeAllRigidbodies()
+    {
+              //Debug.Log("starting rigidbody sleep");
+        PhysicsSceneManager psm = GameObject.Find("PhysicsSceneManager").GetComponent<PhysicsSceneManager>();
+        
+        //yield return new WaitForFixedUpdate();
+        //Physics.autoSimulation=false;
+
+        foreach (Rigidbody rbis in psm.rbsInScene) {
+            rbis.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+            yield return new WaitForFixedUpdate();
+            rbis.WakeUp();
+        }  
+    }
+
 }

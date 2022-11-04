@@ -1,23 +1,76 @@
 import os
+import sys
+#import fcntl
 import datetime
+import json
+import re
+import time
 import zipfile
 import threading
 import hashlib
 import shutil
 import subprocess
 import pprint
+import random
+from queue import Empty
+from typing import Optional
+
 from invoke import task
 import boto3
+import botocore.exceptions
+import multiprocessing as mp
+import io
+#import ai2thor.build
+import logging
+import glob
 
 S3_BUCKET = "ai2-thor"
-UNITY_VERSION = "2018.3.6f1"
+UNITY_VERSION = "2020.3.11f1"
+#from ai2thor.build import TEST_OUTPUT_DIRECTORY
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.INFO)
+
+formatter = logging.Formatter(
+    "%(asctime)s [%(process)d] %(funcName)s - %(levelname)s - %(message)s"
+)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+content_types = {
+    ".js": "application/javascript; charset=utf-8",
+    ".html": "text/html; charset=utf-8",
+    ".ico": "image/x-icon",
+    ".svg": "image/svg+xml; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".png": "image/png",
+    ".txt": "text/plain",
+    ".jpg": "image/jpeg",
+    ".wasm": "application/wasm",
+    ".data": "application/octet-stream",
+    ".unityweb": "application/octet-stream",
+    ".json": "application/json",
+}
 
 
-def add_files(zipf, start_dir):
+class ForcedFailure(Exception):
+    pass
+
+
+def add_files(zipf, start_dir, exclude_ext=()):
     for root, dirs, files in os.walk(start_dir):
         for f in files:
             fn = os.path.join(root, f)
+            if any(map(lambda ext: fn.endswith(ext), exclude_ext)):
+                #print("skipping file %s" % fn)
+                continue
+
             arcname = os.path.relpath(fn, start_dir)
+            if arcname.split("/")[0].endswith("_BackUpThisFolder_ButDontShipItWithYourGame"):
+                # print("skipping %s" % arcname)
+                continue
             # print("adding %s" % arcname)
             zipf.write(fn, arcname)
 
@@ -57,7 +110,59 @@ def _webgl_local_build_path(prefix, source_dir="builds"):
     )
 
 
+def _unity_version():
+    import yaml
+
+    with open("unity/ProjectSettings/ProjectVersion.txt") as pf:
+        project_version = yaml.load(pf.read(), Loader=yaml.FullLoader)
+
+    return project_version["m_EditorVersion"]
+
+
+def _unity_path():
+    unity_version = _unity_version()
+    standalone_path = None
+
+    if sys.platform.startswith("darwin"):
+        unity_hub_path = (
+            "/Applications/Unity/Hub/Editor/{}/Unity.app/Contents/MacOS/Unity".format(
+                unity_version
+            )
+        )
+        # /Applications/Unity/2019.4.20f1/Unity.app/Contents/MacOS
+
+        standalone_path = (
+            "/Applications/Unity/{}/Unity.app/Contents/MacOS/Unity".format(
+                unity_version
+            )
+        )
+        # standalone_path = (
+        #     "/Applications/Unity-{}/Unity.app/Contents/MacOS/Unity".format(
+        #         unity_version
+        #     )
+        # )
+    elif "win" in sys.platform:
+        unity_hub_path = "C:/PROGRA~1/Unity/Hub/Editor/{}/Editor/Unity.exe".format(
+            unity_version
+        )
+        # TODO: Verify windows unity standalone path
+        standalone_path = "C:/PROGRA~1/{}/Editor/Unity.exe".format(unity_version)
+    elif sys.platform.startswith("linux"):
+        unity_hub_path = "{}/Unity/Hub/Editor/{}/Editor/Unity".format(
+            os.environ["HOME"], unity_version
+        )
+
+    if standalone_path and os.path.exists(standalone_path):
+        unity_path = standalone_path
+    else:
+        unity_path = unity_hub_path
+
+    return unity_path
+
+
 def _build(unity_path, arch, build_dir, build_name, env={}):
+    import yaml
+
     project_path = os.path.join(os.getcwd(), unity_path)
     unity_hub_path = "/Applications/Unity/Hub/Editor/{}/Unity.app/Contents/MacOS/Unity".format(
         UNITY_VERSION
@@ -79,8 +184,29 @@ def _build(unity_path, arch, build_dir, build_name, env={}):
     full_env.update(env)
     full_env["UNITY_BUILD_NAME"] = target_path
     result_code = subprocess.check_call(command, shell=True, env=full_env)
-    print("Exited with code {}".format(result_code))
-    return result_code == 0
+    print(f"Exited with code {result_code}")
+    success = result_code == 0
+    if success:
+        generate_build_metadata(os.path.join(project_path, build_dir, "metadata.json"))
+    return success
+
+
+def generate_build_metadata(metadata_path):
+
+    # this server_types metadata is maintained
+    # to allow future versions of the Python API
+    # to launch older versions of the Unity build
+    # and know whether the Fifo server is available
+    server_types = ["WSGI"]
+    try:
+        import ai2thor.fifo_server
+
+        server_types.append("FIFO")
+    except Exception as e:
+        pass
+
+    with open(os.path.join(metadata_path), "w") as f:
+        f.write(json.dumps(dict(server_types=server_types)))
 
 
 def class_dataset_images_for_scene(scene_name):
@@ -308,6 +434,11 @@ def build_class_dataset(context):
 def local_build_name(prefix, arch):
     return "thor-%s-%s" % (prefix, arch)
 
+@task
+def local_build_test(context, prefix="local", arch="OSXIntel64"):
+    from ai2thor.tests.constants import TEST_SCENE
+
+    local_build(context, prefix, arch, [TEST_SCENE])
 
 @task
 def local_build(context, prefix="local", arch="OSXIntel64"):
@@ -329,6 +460,7 @@ def webgl_build(
     verbose=False,
     content_addressable=False,
     turk_build=False,
+    crowdsource_build=False,
 ):
     """
     Creates a WebGL build
@@ -926,14 +1058,31 @@ def benchmark(
     ctx,
     screen_width=600,
     screen_height=600,
+    width=600,
+    height=600,
     editor_mode=False,
     out="benchmark.json",
     verbose=False,
+    local_build=False,
+    number_samples=100,
+    gridSize=0.25,
+    scenes=None,
+    house_json_path=None,
+    filter_object_types="",
+    teleport_random_before_actions=False,
+    commit_id=ai2thor.build.COMMIT_ID,
+    distance_visibility_scheme=False,
+    title=""
 ):
     import ai2thor.controller
     import random
+    import platform
     import time
-    import json
+    from functools import reduce
+    from pprint import pprint
+
+    import os
+    curr = os.path.dirname(os.path.abspath(__file__))
 
     move_actions = ["MoveAhead", "MoveBack", "MoveLeft", "MoveRight"]
     rotate_actions = ["RotateRight", "RotateLeft"]
@@ -961,6 +1110,107 @@ def benchmark(
             print("{} average: {}".format(action_name, 1 / frame_time))
         return 1 / frame_time
 
+    procedural = False
+    if house_json_path:
+        procedural = True
+
+    def create_procedural_house(procedural_house_path):
+        house = None
+        if procedural_house_path:
+            if verbose:
+                print("Loading house from path: '{}'. cwd: '{}'".format(procedural_house_path, curr))
+            with open(procedural_house_path, "r") as f:
+                house = json.load(f)
+                env.step(
+                    action="CreateHouse",
+                    house=house
+                )
+
+        if filter_object_types != "":
+            if filter_object_types == "*":
+                if verbose:
+                    print("-- Filter All Objects From Metadata")
+                env.step(action="SetObjectFilter", objectIds=[])
+            else:
+                types = filter_object_types.split(",")
+                evt = env.step(action="SetObjectFilterForType", objectTypes=types)
+                if verbose:
+                    print("Filter action, Success: {}, error: {}".format(evt.metadata["lastActionSuccess"],
+                                                                         evt.metadata["errorMessage"]))
+        return house
+
+    def telerport_to_random_reachable(env, house=None):
+
+        # teleport within scene for reachable positions to work
+        def centroid(poly):
+            n = len(poly)
+            total = reduce(lambda acc, e: {'x': acc['x'] + e['x'], 'y': acc['y'] + e['y'], 'z': acc['z'] + e['z']},
+                           poly, {'x': 0, 'y': 2, 'z': 0})
+            return {'x': total['x'] / n, 'y': total['y'] / n, 'z': total['z'] / n}
+
+        if procedural:
+            pos = {'x': 0, 'y': 2, 'z': 0}
+
+            if house['rooms'] and len(house['rooms']) > 0:
+                poly = house['rooms'][0]['floorPolygon']
+                pos = centroid(poly)
+
+                print("poly center: {0}".format(pos))
+            evt = env.step(
+                dict(
+                    action="TeleportFull",
+                    x=pos['x'],
+                    y=pos['y'],
+                    z=pos['z'],
+                    rotation=dict(x=0, y=0, z=0),
+                    horizon=0.0,
+                    standing=True,
+                    forceAction=True
+                )
+            )
+            if verbose:
+                print("--Teleport, " + " err: " + evt.metadata["errorMessage"])
+
+        evt = env.step(action="GetReachablePositions")
+
+        # print("After GetReachable AgentPos: {}".format(evt.metadata["agent"]["position"]))
+        if verbose:
+            print("-- GetReachablePositions success: {}, message: {}".format(evt.metadata["lastActionSuccess"],
+                                                                             evt.metadata["errorMessage"]))
+
+        reachable_pos = evt.metadata["actionReturn"]
+
+        # print(evt.metadata["actionReturn"])
+        pos = random.choice(reachable_pos)
+        rot = random.choice([0, 90, 180, 270])
+
+        evt = env.step(
+            dict(
+                action="TeleportFull",
+                x=pos['x'],
+                y=pos['y'],
+                z=pos['z'],
+                rotation=dict(x=0, y=rot, z=0),
+                horizon=0.0,
+                standing=True
+            )
+        )
+
+    args = {}
+    if editor_mode:
+        args["port"] = 8200
+        args["start_unity"] = False
+    elif local_build:
+        args["local_build"] = local_build
+    else:
+        args["commit_id"] = commit_id
+
+    args['width'] = width
+    args['height'] = height
+    args['gridSize'] = gridSize
+    args['snapToGrid'] = True
+    args['visibilityScheme'] = 'Distance' if distance_visibility_scheme else 'Collider'
+    
     env = ai2thor.controller.Controller()
     env.local_executable_path = _local_build_path()
     if editor_mode:
@@ -978,6 +1228,10 @@ def benchmark(
     # Bathrooms:      FloorPLan401 - FloorPlan430
 
     room_ranges = [(1, 30), (201, 230), (301, 330), (401, 430)]
+    if scenes:
+        scene_list = scenes.split(",")
+    else:
+        scene_list = [["FloorPlan{}_physics".format(i) for i in range(room_range[0], room_range[1])] for room_range in room_ranges]
 
     benchmark_map = {"scenes": {}}
     total_average_ft = 0
@@ -995,7 +1249,8 @@ def benchmark(
             if verbose:
                 print("------ {}".format(scene))
 
-            sample_number = 100
+            # initial_teleport(env)
+            sample_number = number_samples
             action_tuples = [
                 ("move", move_actions, sample_number),
                 ("rotate", rotate_actions, sample_number),
@@ -1003,7 +1258,13 @@ def benchmark(
                 ("all", all_actions, sample_number),
             ]
             scene_average_fr = 0
+            procedural_house_path = scene if procedural else None
+
+            house = create_procedural_house(procedural_house_path) if procedural else None
+
             for action_name, actions, n in action_tuples:
+
+                telerport_to_random_reachable(env, house)
                 ft = benchmark_actions(env, action_name, actions, n)
                 scene_benchmark[action_name] = ft
                 scene_average_fr += ft
@@ -1060,7 +1321,7 @@ cache_seconds = 31536000
 def webgl_deploy(
     ctx, prefix="local", source_dir="builds", target_dir="", verbose=False, force=False
 ):
-
+    from pathlib import Path
     from os.path import isfile, join, isdir
 
     content_types = {
@@ -1093,7 +1354,8 @@ def webgl_deploy(
             f_path = join(path, file_name)
             relative_path = join(parent_dir, file_name)
             if isfile(f_path):
-                func(f_path, join(target_dir, relative_path))
+                key = Path(join(target_dir, relative_path))
+                func(f_path, key.as_posix())
             elif isdir(f_path):
                 walk_recursive(f_path, func, relative_path)
 
@@ -1136,7 +1398,7 @@ def webgl_deploy(
                     ContentType=content_types[ext],
                     CacheControl=cache,
                     Expires=expires,
-                    **kwargs
+                    **kwargs,
                 )
             else:
                 if verbose:
@@ -1146,7 +1408,10 @@ def webgl_deploy(
                     )
                 s3.Object(bucket_name, key).put(Body=f.read(), ACL="public-read")
 
-    build_path = _webgl_local_build_path(prefix, source_dir)
+    if prefix is not None:
+        build_path = _webgl_local_build_path(prefix, source_dir)
+    else:
+        build_path = source_dir
     if verbose:
         print("Build path: '{}'".format(build_path))
         print("Uploading...")

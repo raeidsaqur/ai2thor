@@ -4,6 +4,7 @@ from progressbar import ProgressBar, Bar, Percentage, FileTransferSpeed
 import hashlib
 import logging
 import os
+import ai2thor.build
 
 logger = logging.getLogger(__name__)
 base_url = "http://s3-us-west-2.amazonaws.com/ai2-thor/"
@@ -53,4 +54,4 @@ def download(url, build_name, sha256_digest):
     if m.hexdigest() != sha256_digest:
         raise Exception("Digest mismatch for url %s" % url)
 
-    return b''.join(file_data)
+    return b"".join(file_data)

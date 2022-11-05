@@ -1,12 +1,28 @@
-unity/[Ll]ibrary/
+unity/[Ll]ibrary
 unity/[Tt]emp/
 unity/[Oo]bj/
 unity/[Bb]uild/
 unity/[Bb]uilds/
+unity/tmp/
+unity/[Ll]ogs/
+unity/UserSettings/
 unity/Assets/AssetStoreTools*
 unity/.vs/
+unity/.idea/
+unity/Assets/[Pp]rivate/
+unity/Assets/[Pp]rivate.meta
+unity/Assets/InitTestScene*
+unity/utf_testResults-*
+
 .vs/
 build.log
+
+.dotnet/
+# locally installed dotnet tools
+.config/
+
+build.log
+tmp/
 
 
 # General
@@ -28,7 +44,9 @@ ExportedObj/
 *.booproj
 *.svd
 .vscode/
-
+.idea/
+.python-version
+.vsconfig
 
 # Unity3D generated meta files
 *.pidb.meta
@@ -104,3 +122,7 @@ unity/Assets/Scripts/CreateNewPrefab.cs
 unity/Assets/Editor/Instant Screenshot.meta
 unity/Assets/Editor/Instant Screenshot/Documentation - Instant screenshot.pdf
 unity/Assets/Editor/Instant Screenshot/Documentation - Instant screenshot.pdf.meta
+
+*.log
+tmp/
+

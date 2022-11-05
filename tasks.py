@@ -1,4 +1,5 @@
 import os
+import platform
 import sys
 import fcntl
 import datetime
@@ -148,7 +149,7 @@ def _unity_path():
         # TODO: Verify windows unity standalone path
         standalone_path = "C:/PROGRA~1/{}/Editor/Unity.exe".format(unity_version)
     elif sys.platform.startswith("linux"):
-        unity_hub_path = "{}/Unity/Hub/Editor/{}/Editor/Unity".format(
+        unity_hub_path = "{}/unity/{}/Editor/Unity".format(
             os.environ["HOME"], unity_version
         )
 
@@ -164,16 +165,18 @@ def _build(unity_path, arch, build_dir, build_name, env={}):
     import yaml
 
     project_path = os.path.join(os.getcwd(), unity_path)
-    unity_hub_path = "/Applications/Unity/Hub/Editor/{}/Unity.app/Contents/MacOS/Unity".format(
-        UNITY_VERSION
-    )
-    standalone_path = "/Applications/Unity-{}/Unity.app/Contents/MacOS/Unity".format(
-        UNITY_VERSION
-    )
-    if os.path.exists(standalone_path):
-        unity_path = standalone_path
-    else:
-        unity_path = unity_hub_path
+    # unity_hub_path = "/Applications/Unity/Hub/Editor/{}/Unity.app/Contents/MacOS/Unity".format(
+    #     UNITY_VERSION
+    # )
+    # standalone_path = "/Applications/Unity-{}/Unity.app/Contents/MacOS/Unity".format(
+    #     UNITY_VERSION
+    # )
+    # if os.path.exists(standalone_path):
+    #     unity_path = standalone_path
+    # else:
+    #     unity_path = unity_hub_path
+
+    unity_path = _unity_path()
     command = (
         "%s -quit -batchmode -logFile %s.log -projectpath %s -executeMethod Build.%s"
         % (unity_path, build_name, project_path, arch)
@@ -442,6 +445,7 @@ def local_build_test(context, prefix="local", arch="OSXIntel64"):
 
 @task
 def local_build(context, prefix="local", arch="OSXIntel64"):
+    arch = "Linux64" if platform.system() == "Linux" else arch  # quick hack
     build_name = local_build_name(prefix, arch)
     print(f"build_name = {build_name}")
     if _build("unity", arch, "builds", build_name):

@@ -1,6 +1,6 @@
 import os
 import sys
-#import fcntl
+import fcntl
 import datetime
 import json
 import re
@@ -20,13 +20,13 @@ import boto3
 import botocore.exceptions
 import multiprocessing as mp
 import io
-#import ai2thor.build
+import ai2thor.build
 import logging
 import glob
 
 S3_BUCKET = "ai2-thor"
 UNITY_VERSION = "2020.3.11f1"
-#from ai2thor.build import TEST_OUTPUT_DIRECTORY
+# from ai2thor.build import TEST_OUTPUT_DIRECTORY
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -443,6 +443,7 @@ def local_build_test(context, prefix="local", arch="OSXIntel64"):
 @task
 def local_build(context, prefix="local", arch="OSXIntel64"):
     build_name = local_build_name(prefix, arch)
+    print(f"build_name = {build_name}")
     if _build("unity", arch, "builds", build_name):
         print("Build Successful")
     else:

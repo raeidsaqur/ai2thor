@@ -1,8 +1,3 @@
-
-platform_map = dict(Linux64="Linux", OSXIntel64="Darwin")
-
-arch_platform_map = {v: k for k, v in platform_map.items()}
-
 import zipfile
 import logging
 import io
@@ -28,3 +23,7 @@ try:
     COMMIT_ID = ai2thor._builds.COMMIT_ID
 except ImportError:
     pass
+
+
+platform_map = dict(Linux64="Linux", OSXIntel64="Darwin")
+arch_platform_map = {v: k for k, v in platform_map.items()}

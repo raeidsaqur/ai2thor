@@ -686,7 +686,7 @@ class Controller(object):
         command = self.unity_command(width, height, headless=self.headless)
 
         if image_name is not None:
-            self.container_id = ai2thor.docker.run(image_name, self.base_dir(), ' '.join(command), env)
+            self.container_id = ai2thor.docker.run(image_name, self.base_dir, ' '.join(command), env)
             atexit.register(lambda: ai2thor.docker.kill_container(self.container_id))
         else:
             proc = subprocess.Popen(command, env=env)
@@ -792,7 +792,7 @@ class Controller(object):
             raise Exception("Only 64bit currently supported")
 
         url,sha256_build = self.build_url()
-        tmp_dir = os.path.join(self.base_dir(), 'tmp')
+        tmp_dir = os.path.join(self.base_dir, 'tmp')
         makedirs(self.releases_dir())
         makedirs(tmp_dir)
 

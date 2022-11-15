@@ -125,23 +125,10 @@ def _unity_path():
     standalone_path = None
 
     if sys.platform.startswith("darwin"):
-        unity_hub_path = (
-            "/Applications/Unity/Hub/Editor/{}/Unity.app/Contents/MacOS/Unity".format(
-                unity_version
-            )
-        )
-        # /Applications/Unity/2019.4.20f1/Unity.app/Contents/MacOS
-
-        standalone_path = (
-            "/Applications/Unity/{}/Unity.app/Contents/MacOS/Unity".format(
-                unity_version
-            )
-        )
-        # standalone_path = (
-        #     "/Applications/Unity-{}/Unity.app/Contents/MacOS/Unity".format(
-        #         unity_version
-        #     )
-        # )
+        #unity_hub_path = ("/Applications/Unity/Hub/Editor/{}/Unity.app/Contents/MacOS/Unity".format(unity_version))
+        # standalone_path = ("/Applications/Unity/{}/Unity.app/Contents/MacOS/Unity".format(unity_version))
+        unity_hub_path = f"/Applications/Unity\ Hub.app/Contents/MacOS/Unity\ Hub"
+        standalone_path = f"{os.path.expanduser('~')}/unity/{unity_version}/Unity.app/Contents/MacOS/Unity"
     elif "win" in sys.platform:
         unity_hub_path = "C:/PROGRA~1/Unity/Hub/Editor/{}/Editor/Unity.exe".format(
             unity_version

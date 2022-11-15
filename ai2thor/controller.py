@@ -717,11 +717,25 @@ class Controller(object):
     def _start_server_thread(self):
         self.server.start()
 
-    def releases_dir(self):
-        return os.path.join(self.base_dir(), 'releases')
+    @property
+    def tmp_dir(self):
+        return os.path.join(self.base_dir, "tmp")
 
+    @property
+    def releases_dir(self):
+        return os.path.join(self.base_dir, "releases")
+
+    @property
+    def cache_dir(self):
+        return os.path.join(self.base_dir, "cache")
+
+    @property
+    def commits_cache_dir(self):
+        return os.path.join(self.cache_dir, "commits")
+
+    @property
     def base_dir(self):
-        return os.path.join(os.path.expanduser('~'), '.ai2thor')
+        return os.path.join(os.path.expanduser("~"), ".ai2thor")
 
     def build_url(self):
         from ai2thor.build import arch_platform_map

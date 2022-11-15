@@ -686,7 +686,7 @@ class Controller(object):
         command = self.unity_command(width, height, headless=self.headless)
 
         if image_name is not None:
-            self.container_id = ai2thor.docker.run(image_name, self.base_dir, ' '.join(command), env)
+            self.container_id = ai2thor.docker.run(image_name, self.base_dir(), ' '.join(command), env)
             atexit.register(lambda: ai2thor.docker.kill_container(self.container_id))
         else:
             proc = subprocess.Popen(command, env=env)
@@ -717,23 +717,17 @@ class Controller(object):
     def _start_server_thread(self):
         self.server.start()
 
-    @property
-    def tmp_dir(self):
-        return os.path.join(self.base_dir, "tmp")
-
-    @property
     def releases_dir(self):
-        return os.path.join(self.base_dir, "releases")
+        return os.path.join(self.base_dir(), 'releases')
 
-    @property
-    def cache_dir(self):
-        return os.path.join(self.base_dir, "cache")
+    # @property
+    # def cache_dir(self):
+    #     return os.path.join(self.base_dir, "cache")
+    #
+    # @property
+    # def commits_cache_dir(self):
+    #     return os.path.join(self.cache_dir, "commits")
 
-    @property
-    def commits_cache_dir(self):
-        return os.path.join(self.cache_dir, "commits")
-
-    @property
     def base_dir(self):
         return os.path.join(os.path.expanduser("~"), ".ai2thor")
 
@@ -792,7 +786,7 @@ class Controller(object):
             raise Exception("Only 64bit currently supported")
 
         url,sha256_build = self.build_url()
-        tmp_dir = os.path.join(self.base_dir, 'tmp')
+        tmp_dir = os.path.join(self.base_dir(), 'tmp')
         makedirs(self.releases_dir())
         makedirs(tmp_dir)
 

@@ -35,8 +35,7 @@ namespace UnityStandardAssets.Characters.FirstPerson
 		private List<Renderer> capsuleRenderers = null;
 
         private bool isVisible = true;
-        public bool IsVisible
-        {
+        public bool IsVisible {
 			get { return isVisible; }
 			set {
 				if (capsuleRenderers == null) {
@@ -56,6 +55,23 @@ namespace UnityStandardAssets.Characters.FirstPerson
 			}
         }
 
+        public bool IsProcessing {
+            get {
+                return this.agentState == AgentState.Processing;
+            }
+        }
+
+        public bool inHighFrictionArea = false;
+        public int fixedUpdateCount { get; protected set; }
+        public int updateCount { get; protected set; }
+        // outbound object filter
+        private SimObjPhysics[] simObjFilter = null;
+        private VisibilityScheme visibilityScheme = VisibilityScheme.Collider;
+        private Dictionary<int, Dictionary<string, object>> originalLightingValues = null;
+
+        public AgentState agentState = AgentState.Emit;
+
+
 		//[SerializeField]
 		//protected bool m_UseFovKick;
 		//[SerializeField]
@@ -73,39 +89,41 @@ namespace UnityStandardAssets.Characters.FirstPerson
 		protected float[] headingAngles = new float[] { 0.0f, 90.0f, 180.0f, 270.0f };
 		protected float[] horizonAngles = new float[] { 60.0f, 30.0f, 0.0f, 330.0f };
 
+		public float maxVisibleDistance = 1.5f; //changed from 1.0f to account for objects randomly spawned far away on tables/countertops, which would be not visible at 1.0f
+		protected float maxDownwardLookAngle = 60f;
+        protected float maxUpwardLookAngle = 30f;
+		
 		//allow agent to push sim objects that can move, for physics
 		protected bool PushMode = false;
 		protected int actionCounter;
 		protected Vector3 targetTeleport;
         public AgentManager agentManager;
+        public Camera m_Camera;
 
-
-
-
-		public string[] excludeObjectIds = new string[0];
-		public Camera m_Camera;
-		//protected bool m_Jump;
 		protected float m_XRotation;
 		protected float m_ZRotation;
 		protected Vector2 m_Input;
 		protected Vector3 m_MoveDir = Vector3.zero;
 		public CharacterController m_CharacterController;
 		protected CollisionFlags m_CollisionFlags;
+		
+		public string[] excludeObjectIds = new string[0];
 		//protected bool m_PreviouslyGrounded;
+		//protected bool m_Jump;
 		//protected bool m_Jumping;
+		
 		protected Vector3 lastPosition;
 		protected string lastAction;
 		protected bool lastActionSuccess;
 		protected string errorMessage;
 		protected ServerActionErrorCode errorCode;
+
 		public bool actionComplete;
 		public System.Object actionReturn;
 
 
         // Vector3 m_OriginalCameraPosition;
 
-
-        public float maxVisibleDistance = 1.5f; //changed from 1.0f to account for objects randomly spawned far away on tables/countertops, which would be not visible at 1.0f
 
 		// initial states
 		protected Vector3 init_position;
@@ -133,6 +151,18 @@ namespace UnityStandardAssets.Characters.FirstPerson
 		{
 			get { return targetRotation; }
 		}
+
+		private PhysicsSceneManager _physicsSceneManager = null;
+        // use as reference to the PhysicsSceneManager object
+        protected PhysicsSceneManager physicsSceneManager {
+            get {
+                if (_physicsSceneManager == null) {
+                    _physicsSceneManager = GameObject.Find("PhysicsSceneManager").GetComponent<PhysicsSceneManager>();
+                }
+                return _physicsSceneManager;
+            }
+        }
+
 
 		// Initialize parameters from environment variables
 		protected virtual void Awake()
@@ -277,8 +307,10 @@ namespace UnityStandardAssets.Characters.FirstPerson
 				// Do nothing
 			} else {
 				throw new NotImplementedException("ssao must be one of 'on', 'off' or 'default'.");
-			}			
-			
+			}
+
+			// this.visibilityScheme = action.GetVisibilityScheme();
+            this.originalLightingValues = null;			
         }
 
         public IEnumerator checkInitializeAgentLocationAction()
@@ -351,6 +383,200 @@ namespace UnityStandardAssets.Characters.FirstPerson
                 actionFinished(false);
             }
         }
+
+        [ObsoleteAttribute(message: "This action is deprecated. Call RandomizeColors instead.", error: false)]
+        public void ChangeColorOfMaterials() {
+            RandomizeColors();
+        }
+
+		public void RandomizeColors() {
+            ColorChanger colorChangeComponent = physicsSceneManager.GetComponent<ColorChanger>();
+            colorChangeComponent.RandomizeColor();
+            actionFinished(true);
+        }
+
+        public void ResetColors() {
+            ColorChanger colorChangeComponent = physicsSceneManager.GetComponent<ColorChanger>();
+            colorChangeComponent.ResetColors();
+            actionFinished(true);
+        }
+
+        /**
+         *
+         * @REMARK: float[] = {float, float} cannot be a compile time constant, hence why there are
+         *          null defaults.
+         * @REMARK: Union types are not (intended) to be supported in C# until C# 10.0. So, sadly, one
+         *          must pass in hue=[value, value] for hue=value (and similarly for brightness and
+         *          saturation).
+         *
+         * @param synchronized denotes if all lights should be multiplied by the same randomized
+         *        intensity and be randomized to the same color. When false, each lighting object gets
+         *        its own independent randomized intensity and randomized color.
+         * @param brightness sets the bounds with which the light intensity is multiplied by. If its a
+         *        tuple(float, float), values must each be greater than 0, where the multiplier is
+         *        then sampled from [brightness[0] : brightness[1]]. If brightness[0] is greater than
+         *        brightness[1], the values are swapped. Defaults to (0.5, 1.5).
+         * @param randomizeColor specifies if the color of the light should be randomized, or if only
+         *        its intensity should change.
+         * @param hue provides the (min, max) range of possible hue values for a light's color.
+         *        Valid values are in [0 : 1], where:
+         *          - 0 maps to a hue of 0 degrees (i.e., red-ish)
+         *          - 0.5 maps to a hue of 180 degrees (i.e., green-ish)
+         *          - 1 maps to a hue of 360 degrees (i.e., red-ish)
+         * @param saturation provides the (min, max) range of possible saturation values for a light's
+         *        color. Valid values are in [0 : 1], where 0 corresponds to grayscale and 1 corresponds
+         *        to full saturation. Defaults to [0.5 : 1].
+         */
+/*
+         public void RandomizeLighting(
+            bool synchronized = false,
+            float[] brightness = null,
+            bool randomizeColor = true,
+            float[] hue = null,
+            float[] saturation = null
+        ) {
+            if (!randomizeColor && (hue != null || saturation != null)) {
+                if (hue != null) {
+                    throw new ArgumentException(
+                        "Cannot pass in randomizeColor=False while also providing hue={hue}."
+                    );
+                }
+                if (saturation != null) {
+                    throw new ArgumentException(
+                        "Cannot pass in randomizeColor=False while also providing saturation={saturation}."
+                    );
+                }
+            }
+
+            if (brightness == null) {
+                brightness = new float[] { 0.5f, 1.5f };
+            }
+            if (brightness[0] < 0 || brightness[1] < 0) {
+                throw new ArgumentOutOfRangeException(
+                    "Each brightness must be >= 0, not brightness={brightness}."
+                );
+            }
+
+            if (hue == null) {
+                hue = new float[] { 0, 1 };
+            }
+            if (saturation == null) {
+                saturation = new float[] { 0.5f, 1 };
+            }
+
+            if (saturation.Length != 2 || hue.Length != 2 || brightness.Length != 2) {
+                throw new ArgumentException(
+                    "Ranges for hue, saturation, and brightness must each have 2 values. You gave " +
+                    "saturation={saturation}, hue={hue}, brightness={brightness}."
+                );
+            }
+
+            if (hue[0] < 0 || hue[0] > 1 || hue[1] < 0 || hue[1] > 1) {
+                throw new ArgumentOutOfRangeException("hue range must be in [0:1], not {hue}");
+            }
+            if (saturation[0] < 0 || saturation[0] > 1 || saturation[1] < 0 || saturation[1] > 1) {
+                throw new ArgumentOutOfRangeException("saturation range must be in [0:1], not {saturation}");
+            }
+
+            float newRandomFloat() {
+                return Random.Range(brightness[0], brightness[1]);
+            }
+            Color newRandomColor() {
+                // NOTE: This function weirdly IGNORES out of bounds arguments.
+                //       So, they are checked above.
+                // NOTE: value is an extraneous degree of freedom here,
+                //       since it can be controlled by brightness.
+                //       Hence why value=1.
+                return Random.ColorHSV(
+                    hueMin: hue[0],
+                    hueMax: hue[1],
+                    saturationMin: saturation[0],
+                    saturationMax: saturation[1],
+                    valueMin: 1,
+                    valueMax: 1
+                );
+            }
+
+            float intensityMultiplier = newRandomFloat();
+            Color randomColor = newRandomColor();
+
+            bool setOriginalMultipliers = originalLightingValues == null;
+            if (setOriginalMultipliers) {
+                originalLightingValues = new Dictionary<int, Dictionary<string, object>>();
+            }
+
+            // include both lights and reflection probes
+            Light[] lights = GameObject.FindObjectsOfType<Light>();
+            foreach (Light light in lights) {
+                if (!synchronized) {
+                    intensityMultiplier = newRandomFloat();
+                    randomColor = newRandomColor();
+                }
+                int id = light.gameObject.GetInstanceID();
+                if (setOriginalMultipliers) {
+                    originalLightingValues[id] = new Dictionary<string, object>() {
+                        // NOTE: make sure these are synced with ResetLighting()!
+                        ["intensity"] = light.intensity,
+                        ["range"] = light.range,
+                        ["color"] = light.color
+                    };
+                }
+                light.intensity = (float)originalLightingValues[id]["intensity"] * intensityMultiplier;
+                light.range = (float)originalLightingValues[id]["range"] * intensityMultiplier;
+                if (randomizeColor) {
+                    light.color = randomColor;
+                }
+            }
+
+            ReflectionProbe[] reflectionProbes = GameObject.FindObjectsOfType<ReflectionProbe>();
+            foreach (ReflectionProbe reflectionProbe in reflectionProbes) {
+                if (!synchronized) {
+                    intensityMultiplier = newRandomFloat();
+                }
+                int id = reflectionProbe.gameObject.GetInstanceID();
+                if (setOriginalMultipliers) {
+                    // NOTE: make sure these are synced with ResetLighting()!
+                    originalLightingValues[id] = new Dictionary<string, object>() {
+                        ["intensity"] = reflectionProbe.intensity,
+                        ["blendDistance"] = reflectionProbe.intensity
+                    };
+                }
+                reflectionProbe.intensity = (
+                    (float)originalLightingValues[id]["intensity"] * intensityMultiplier
+                );
+                reflectionProbe.blendDistance = (
+                    (float)originalLightingValues[id]["blendDistance"] * intensityMultiplier
+                );
+            }
+
+            actionFinished(success: true);
+        }
+
+        public void ResetLighting() {
+            if (originalLightingValues == null) {
+                actionFinishedEmit(success: true);
+                return;
+            }
+
+            Light[] lights = GameObject.FindObjectsOfType<Light>();
+            foreach (Light light in lights) {
+                int id = light.gameObject.GetInstanceID();
+                light.intensity = (float)originalLightingValues[id]["intensity"];
+                light.range = (float)originalLightingValues[id]["range"];
+                light.color = (Color)originalLightingValues[id]["color"];
+            }
+
+            ReflectionProbe[] reflectionProbes = GameObject.FindObjectsOfType<ReflectionProbe>();
+            foreach (ReflectionProbe reflectionProbe in reflectionProbes) {
+                int id = reflectionProbe.gameObject.GetInstanceID();
+                reflectionProbe.intensity = (float)originalLightingValues[id]["intensity"];
+                reflectionProbe.blendDistance = (float)originalLightingValues[id]["blendDistance"];
+            }
+
+            originalLightingValues = null;
+            actionFinished(success: true);
+        }
+*/
 
 		public bool excludeObject(string uniqueId)
 		{

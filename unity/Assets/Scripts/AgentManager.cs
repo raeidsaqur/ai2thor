@@ -1,11 +1,19 @@
 ﻿using System;
 using System.Collections;
+
 using System.Collections.Generic;
 using UnityEngine;
 using UnityStandardAssets.Characters.FirstPerson;
+using System.IO;
 using System.Net.Sockets;
 using System.Net;
+using MessagePack.Resolvers;
+using MessagePack.Formatters;
+using MessagePack;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
+using System.Reflection;
 using System.Text;
 using UnityEngine.Networking;
 
@@ -35,14 +43,41 @@ public class AgentManager : MonoBehaviour
 	private bool readyToEmit;
 
 	private Color[] agentColors = new Color[]{Color.blue, Color.yellow, Color.green, Color.red, Color.magenta, Color.grey};
-
 	public int actionDuration = 3;
-
 	private BaseFPSAgentController primaryAgent;
+	private PhysicsSceneManager physicsSceneManager;
 
-    private JavaScriptInterface jsInterface;
+	// private FifoServer.Client fifoClient = null;
+    private enum serverTypes { WSGI, FIFO };
+    private serverTypes serverType;
+    private AgentState agentManagerState = AgentState.Emit;
+    private bool fastActionEmit = true;
 
-    private PhysicsSceneManager physicsSceneManager;
+    // it is public to be accessible from the debug input field.
+    public HashSet<string> agentManagerActions = new HashSet<string> { "Reset", "Initialize", "AddThirdPartyCamera", "UpdateThirdPartyCamera", "ChangeResolution" };
+
+    public const float DEFAULT_FOV = 90;
+    public const float MAX_FOV = 180;
+    public const float MIN_FOV = 0;
+	
+    public Bounds sceneBounds = new Bounds(
+        new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity),
+        new Vector3(-float.PositiveInfinity, -float.PositiveInfinity, -float.PositiveInfinity)
+    );
+    public Bounds SceneBounds {
+        get {
+            if (sceneBounds.min.x == float.PositiveInfinity) {
+                ResetSceneBounds();
+            }
+            return sceneBounds;
+        }
+        set {
+            sceneBounds = value;
+        }
+    }
+
+
+    private JavaScriptInterface jsInterface;    
     public int AdvancePhysicsStepCount = 0;
 
 	void Awake() {
@@ -136,6 +171,7 @@ public class AgentManager : MonoBehaviour
 		this.agents[0].m_Camera.depth = 9999;
 
 		readyToEmit = true;
+		this.agentManagerState = AgentState.ActionComplete;
 	}
 
 	public void AddThirdPartyCamera(ServerAction action) {
@@ -153,6 +189,29 @@ public class AgentManager : MonoBehaviour
 		gameObject.transform.position = action.position;
 		readyToEmit = true;
 	}
+
+	// helper that can be used when converting Dictionary<string, float> to a Vector3.
+    private Vector3 parseOptionalVector3(
+        OptionalVector3 optionalVector3,
+        Vector3 defaultsOnNull
+    ) {
+        if (optionalVector3 == null) {
+            return defaultsOnNull;
+        }
+
+        return new Vector3(
+            x: optionalVector3.x == null ? defaultsOnNull.x : (float)optionalVector3.x,
+            y: optionalVector3.y == null ? defaultsOnNull.y : (float)optionalVector3.y,
+            z: optionalVector3.z == null ? defaultsOnNull.z : (float)optionalVector3.z
+        );
+    }
+
+    // Here, we don't want some dimensions set. For instance, set x, but not y.
+    public class OptionalVector3 {
+        public float? x = null;
+        public float? y = null;
+        public float? z = null;
+    }
 
 	public void UpdateThirdPartyCamera(ServerAction action) {
 		if (action.thirdPartyCameraId <= thirdPartyCameras.Count) {
@@ -701,6 +760,7 @@ public class AgentManager : MonoBehaviour
 
 
 [Serializable]
+[MessagePackObject(keyAsPropertyName: true)]
 public class MultiAgentMetadata {
 
 	public MetadataWrapper[] agents;
@@ -710,6 +770,7 @@ public class MultiAgentMetadata {
 }
 
 [Serializable]
+[MessagePackObject(keyAsPropertyName: true)]
 public class ThirdPartyCameraMetadata
 {
 	public int thirdPartyCameraId;
@@ -717,7 +778,27 @@ public class ThirdPartyCameraMetadata
 	public Vector3 rotation;
 }
 
+// adding AgentMetdata class so there is less confusing
+// overlap between ObjectMetadata and AgentMetadata
 [Serializable]
+[MessagePackObject(keyAsPropertyName: true)]
+public class AgentMetadata {
+    public string name;
+    public Vector3 position;
+    public Vector3 rotation;
+    public float cameraHorizon;
+
+    // TODO: this should be removed from base.
+    // some agents cannot stand (e.g., drone, locobot)
+    public bool? isStanding = null;
+
+    public bool inHighFrictionArea;
+    public AgentMetadata() { }
+}
+
+
+[Serializable]
+[MessagePackObject(keyAsPropertyName: true)]
 public class ObjectMetadata
 {
 	public string name;
@@ -788,6 +869,7 @@ public class ObjectMetadata
 }
 
 [Serializable]
+[MessagePackObject(keyAsPropertyName: true)]
 public class WorldSpaceBounds
 {
     //8 corners of the box that bounds a sim object
@@ -795,6 +877,7 @@ public class WorldSpaceBounds
 }
 
 [Serializable]
+[MessagePackObject(keyAsPropertyName: true)]
 public class InventoryObject
 {
 	public string objectId;
@@ -802,18 +885,21 @@ public class InventoryObject
 }
 
 [Serializable]
+[MessagePackObject(keyAsPropertyName: true)]
 public class ColorId {
 	public ushort[] color;
 	public string name;
 }
 
 [Serializable]
+[MessagePackObject(keyAsPropertyName: true)]
 public class ColorBounds {
 	public ushort[] color;
 	public int[] bounds;
 }
 
 [Serializable]
+[MessagePackObject(keyAsPropertyName: true)]
 public class HandMetadata {
 	public Vector3 position;
 	public Vector3 rotation;
@@ -829,6 +915,7 @@ public class ObjectTypeCount
 }
 
 [Serializable]
+[MessagePackObject(keyAsPropertyName: true)]
 public class ObjectPose
 {
     public string objectName;
@@ -844,6 +931,7 @@ public class ObjectToggle
 }
 
 [Serializable]
+[MessagePackObject(keyAsPropertyName: true)]
 public struct MetadataWrapper
 {
 	public ObjectMetadata[] objects;
@@ -1001,4 +1089,30 @@ public enum ServerActionErrorCode  {
 	LookUpCantExceedMax,
 	LookDownCantExceedMin,
 	InvalidAction
+}
+
+public enum VisibilityScheme {
+    Collider,
+    Distance
+}
+
+[Serializable]
+public class ControllerInitialization {
+    public Dictionary<string, TypedVariable> variableInitializations;
+}
+
+
+[Serializable]
+public class TypedVariable {
+    public string type;
+    public object value;
+}
+
+
+
+public enum AgentState {
+    Processing,
+    ActionComplete,
+    PendingFixedUpdate,
+    Emit
 }

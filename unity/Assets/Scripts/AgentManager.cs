@@ -7,9 +7,9 @@ using UnityStandardAssets.Characters.FirstPerson;
 using System.IO;
 using System.Net.Sockets;
 using System.Net;
-using MessagePack.Resolvers;
-using MessagePack.Formatters;
-using MessagePack;
+// using MessagePack.Resolvers;
+// using MessagePack.Formatters;
+// using MessagePack;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
@@ -73,6 +73,19 @@ public class AgentManager : MonoBehaviour
         }
         set {
             sceneBounds = value;
+        }
+    }
+
+    public void ResetSceneBounds() {
+        // Recording initially disabled renderers and scene bounds
+        sceneBounds = new Bounds(
+            new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity),
+            new Vector3(-float.PositiveInfinity, -float.PositiveInfinity, -float.PositiveInfinity)
+        );
+        foreach (Renderer r in GameObject.FindObjectsOfType<Renderer>()) {
+            if (r.enabled) {
+                sceneBounds.Encapsulate(r.bounds);
+            }
         }
     }
 
@@ -760,7 +773,7 @@ public class AgentManager : MonoBehaviour
 
 
 [Serializable]
-[MessagePackObject(keyAsPropertyName: true)]
+//[MessagePackObject(keyAsPropertyName: true)]
 public class MultiAgentMetadata {
 
 	public MetadataWrapper[] agents;
@@ -770,7 +783,7 @@ public class MultiAgentMetadata {
 }
 
 [Serializable]
-[MessagePackObject(keyAsPropertyName: true)]
+//[MessagePackObject(keyAsPropertyName: true)]
 public class ThirdPartyCameraMetadata
 {
 	public int thirdPartyCameraId;
@@ -781,7 +794,7 @@ public class ThirdPartyCameraMetadata
 // adding AgentMetdata class so there is less confusing
 // overlap between ObjectMetadata and AgentMetadata
 [Serializable]
-[MessagePackObject(keyAsPropertyName: true)]
+//[MessagePackObject(keyAsPropertyName: true)]
 public class AgentMetadata {
     public string name;
     public Vector3 position;
@@ -798,7 +811,7 @@ public class AgentMetadata {
 
 
 [Serializable]
-[MessagePackObject(keyAsPropertyName: true)]
+//[MessagePackObject(keyAsPropertyName: true)]
 public class ObjectMetadata
 {
 	public string name;
@@ -869,7 +882,7 @@ public class ObjectMetadata
 }
 
 [Serializable]
-[MessagePackObject(keyAsPropertyName: true)]
+//[MessagePackObject(keyAsPropertyName: true)]
 public class WorldSpaceBounds
 {
     //8 corners of the box that bounds a sim object
@@ -877,7 +890,7 @@ public class WorldSpaceBounds
 }
 
 [Serializable]
-[MessagePackObject(keyAsPropertyName: true)]
+//[MessagePackObject(keyAsPropertyName: true)]
 public class InventoryObject
 {
 	public string objectId;
@@ -885,21 +898,21 @@ public class InventoryObject
 }
 
 [Serializable]
-[MessagePackObject(keyAsPropertyName: true)]
+//[MessagePackObject(keyAsPropertyName: true)]
 public class ColorId {
 	public ushort[] color;
 	public string name;
 }
 
 [Serializable]
-[MessagePackObject(keyAsPropertyName: true)]
+//[MessagePackObject(keyAsPropertyName: true)]
 public class ColorBounds {
 	public ushort[] color;
 	public int[] bounds;
 }
 
 [Serializable]
-[MessagePackObject(keyAsPropertyName: true)]
+//[MessagePackObject(keyAsPropertyName: true)]
 public class HandMetadata {
 	public Vector3 position;
 	public Vector3 rotation;
@@ -915,7 +928,7 @@ public class ObjectTypeCount
 }
 
 [Serializable]
-[MessagePackObject(keyAsPropertyName: true)]
+//[MessagePackObject(keyAsPropertyName: true)]
 public class ObjectPose
 {
     public string objectName;
@@ -931,7 +944,7 @@ public class ObjectToggle
 }
 
 [Serializable]
-[MessagePackObject(keyAsPropertyName: true)]
+//[MessagePackObject(keyAsPropertyName: true)]
 public struct MetadataWrapper
 {
 	public ObjectMetadata[] objects;
